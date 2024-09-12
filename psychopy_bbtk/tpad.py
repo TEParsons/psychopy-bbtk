@@ -2,6 +2,7 @@ from psychopy.hardware import base, serialdevice as sd, photodiode, button
 from psychopy.hardware.manager import deviceManager, DeviceManager, ManagedDeviceError
 from psychopy import logging, layout
 from psychopy.tools import systemtools as st
+import numpy as np
 import serial
 import re
 import sys
@@ -318,6 +319,7 @@ class TPad(sd.SerialDevice):
         self._lastTimerReset = logging.defaultClock._timeAtLastReset
         # dict of responses by timestamp
         self.messages = {}
+        self.messageTimes = []
         # indicator that a message dispatch is currently in progress (prevents threaded 
         # dispatch loops from tripping over one another)
         self._dispatchInProgress = False
@@ -468,6 +470,7 @@ class TPad(sd.SerialDevice):
                 parts = (device, state, channel, time)
                 # store message
                 self.messages[time] = line
+                self.messageTimes.append(time)
                 # choose object to dispatch to
                 for node in self.nodes:
                     # if device is A, dispatch only to buttons
@@ -484,6 +487,13 @@ class TPad(sd.SerialDevice):
                     node.receiveMessage(message)
             else:
                 logging.debug(f"Received unparsable message from TPad: {repr(line)}")
+        # log warning if rate of messages is extremely high (may indicate voltage or wiring issue)
+        msgTimes = np.asarray(self.messageTimes[-100:], dtype=float)
+        if np.sum(msgTimes >= msgTimes.max() - 0.1) > 10:
+            logging.error(
+                "TPad received over 100 responses per second, these are highly unlikely to be "
+                "genuine responses and may be the result of an electrical fault."
+            )
         # mark that a dispatch has finished
         self._dispatchInProgress = False
     
